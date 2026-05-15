@@ -1,0 +1,26 @@
+name: mvvm_lite
+description: A tiny, zero-dependency MVVM toolkit for Flutter — ViewModel base class with lifecycle tracking, scoped provider, granular Selector, and Consumer.
+version: 0.1.0
+repository: https://github.com/voledyaev/mvvm_lite
+issue_tracker: https://github.com/voledyaev/mvvm_lite/issues
+homepage: https://github.com/voledyaev/mvvm_lite
+
+topics:
+  - mvvm
+  - state-management
+  - view-model
+  - provider
+  - architecture
+
+environment:
+  sdk: ^3.0.0
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  lints: ^4.0.0
