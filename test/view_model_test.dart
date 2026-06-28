@@ -108,5 +108,11 @@ void main() {
       expect(vm.state, 0);
       await controller.close();
     });
+
+    test('toString includes the identity and current state', () {
+      final vm = _CounterVm()..setTo(7);
+      expect(vm.toString(), contains('_CounterVm'));
+      expect(vm.toString(), contains('(7)'));
+    });
   });
 }

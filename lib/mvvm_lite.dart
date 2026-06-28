@@ -10,7 +10,7 @@
 /// * [Selector] — rebuilds only when a derived projection changes.
 /// * `BuildContext.readVm<VM>()` — retrieves the view model without
 ///   subscribing (use for invoking methods).
-library mvvm_lite;
+library;
 
 export 'src/view_model.dart';
 export 'src/widgets.dart';

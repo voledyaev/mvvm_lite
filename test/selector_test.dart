@@ -25,6 +25,9 @@ class _FormVm extends ViewModel<_FormState> {
 
   void setName(String value) => state = state.copyWith(name: value);
   void setAge(int value) => state = state.copyWith(age: value);
+
+  // Exposes the protected `hasListeners` flag for leak/subscription tests.
+  bool get hasAnyListeners => hasListeners;
 }
 
 void main() {
@@ -121,6 +124,113 @@ void main() {
       vm.replace([1, 2, 3, 4]);
       await tester.pump();
       expect(buildCount, 2);
+    });
+
+    testWidgets('throws a FlutterError when no provider is in scope',
+        (tester) async {
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Selector<_FormState, String>(
+            selector: (state) => state.name,
+            builder: (_, name, __) => Text('name=$name'),
+          ),
+        ),
+      );
+      expect(tester.takeException(), isA<FlutterError>());
+    });
+
+    testWidgets('recomputes the value when the selector callback changes',
+        (tester) async {
+      Widget build(StateSelector<_FormState, String> selector) =>
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: ViewModelProvider<_FormVm, _FormState>(
+              create: (_) => _FormVm(),
+              child: Selector<_FormState, String>(
+                selector: selector,
+                builder: (_, value, __) => Text('value=$value'),
+              ),
+            ),
+          );
+
+      await tester.pumpWidget(build((state) => state.name));
+      expect(find.text('value=Alice'), findsOneWidget);
+
+      // New selector closure, same view model, no state change — the displayed
+      // value must update via didUpdateWidget.
+      await tester.pumpWidget(build((state) => 'age=${state.age}'));
+      expect(find.text('value=age=30'), findsOneWidget);
+    });
+
+    testWidgets('static child is reused across rebuilds', (tester) async {
+      late _FormVm vm;
+      const childKey = ValueKey('static-child');
+      Widget? first;
+      Widget? second;
+
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: ViewModelProvider<_FormVm, _FormState>(
+            create: (_) {
+              vm = _FormVm();
+              return vm;
+            },
+            child: Selector<_FormState, String>(
+              selector: (state) => state.name,
+              child: const SizedBox(key: childKey),
+              builder: (_, name, child) {
+                if (name == 'Alice') first = child;
+                if (name == 'Bob') second = child;
+                return child!;
+              },
+            ),
+          ),
+        ),
+      );
+      vm.setName('Bob');
+      await tester.pump();
+
+      expect(identical(first, second), isTrue);
+    });
+
+    testWidgets('re-subscribes when moved to a different provider',
+        (tester) async {
+      final selectorKey = GlobalKey();
+      late _FormVm vmA;
+      late _FormVm vmB;
+
+      Widget selector() => Selector<_FormState, String>(
+            key: selectorKey,
+            selector: (state) => state.name,
+            builder: (_, name, __) => Text('name=$name'),
+          );
+      Widget build({required bool underA}) => Directionality(
+            textDirection: TextDirection.ltr,
+            child: Column(
+              children: [
+                ViewModelProvider<_FormVm, _FormState>(
+                  create: (_) => vmA = _FormVm(),
+                  child: underA ? selector() : const SizedBox(),
+                ),
+                ViewModelProvider<_FormVm, _FormState>(
+                  create: (_) => vmB = (_FormVm()..setName('Bob')),
+                  child: underA ? const SizedBox() : selector(),
+                ),
+              ],
+            ),
+          );
+
+      await tester.pumpWidget(build(underA: true));
+      expect(find.text('name=Alice'), findsOneWidget);
+      expect(vmA.hasAnyListeners, isTrue);
+      expect(vmB.hasAnyListeners, isFalse);
+
+      await tester.pumpWidget(build(underA: false));
+      expect(find.text('name=Bob'), findsOneWidget);
+      expect(vmA.hasAnyListeners, isFalse);
+      expect(vmB.hasAnyListeners, isTrue);
     });
   });
 }
