@@ -24,6 +24,12 @@ typedef SelectorShouldRebuild<T> = bool Function(T previous, T next);
 /// Use [Selector] to extract a single derived value from a larger state
 /// object and avoid rebuilding the subtree on unrelated state changes.
 ///
+/// Resolves the view model by **state type [S]** — the nearest enclosing
+/// [ViewModelProvider] whose state type is [S]. Give each provider a dedicated
+/// state class; never key a [Selector] on a primitive (`int`, `String`) or on
+/// a state type shared by nested providers, or the nearest — possibly wrong —
+/// view model is bound silently.
+///
 /// Equality is checked with `==` by default. For collections without value
 /// equality, pass [shouldRebuild] (e.g.
 /// `shouldRebuild: (a, b) => !const ListEquality().equals(a, b)`).
@@ -83,12 +89,13 @@ class _SelectorState<S, T> extends State<Selector<S, T>> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final scope = context.dependOnInheritedWidgetOfExactType<_StateScope<S>>();
-    assert(
-      scope != null,
-      'Selector<$S, $T>: no ViewModelProvider with state type $S found above '
-      'this BuildContext.',
-    );
-    final next = scope!.viewModel;
+    if (scope == null) {
+      throw FlutterError(
+        'Selector<$S, $T>: no ViewModelProvider with state type $S found '
+        'above this BuildContext.',
+      );
+    }
+    final next = scope.viewModel;
     if (!identical(next, _vm)) {
       _vm?.removeListener(_onChange);
       _vm = next..addListener(_onChange);

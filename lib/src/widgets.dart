@@ -1,6 +1,6 @@
 /// Widget primitives that scope a [ViewModel] to a subtree and expose its
 /// state for granular consumption.
-library mvvm_lite.widgets;
+library;
 
 import 'package:flutter/widgets.dart';
 
@@ -45,16 +45,17 @@ extension MvvmLiteContext on BuildContext {
   /// without subscribing to it. Use this to invoke methods on the view model
   /// from event handlers and effects.
   ///
-  /// Throws a [FlutterError] in debug if no matching [ViewModelProvider] is
-  /// found above this context.
+  /// Throws a [FlutterError] if no matching [ViewModelProvider] is found above
+  /// this context — in both debug and release builds.
   VM readVm<VM extends ViewModel<Object?>>() {
     final scope = getInheritedWidgetOfExactType<_VmScope<VM>>();
-    assert(
-      scope != null,
-      'context.readVm<$VM>(): no ViewModelProvider<$VM, …> found above this '
-      'BuildContext. Did you call readVm outside the provider subtree, or '
-      'with the wrong view-model type?',
-    );
-    return scope!.viewModel;
+    if (scope == null) {
+      throw FlutterError(
+        'context.readVm<$VM>(): no ViewModelProvider<$VM, …> found above this '
+        'BuildContext. Did you call readVm outside the provider subtree, or '
+        'with the wrong view-model type?',
+      );
+    }
+    return scope.viewModel;
   }
 }

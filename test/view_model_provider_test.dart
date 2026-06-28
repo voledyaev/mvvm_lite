@@ -60,7 +60,10 @@ void main() {
           },
         ),
       );
-      expect(() => captured!.readVm<_CounterVm>(), throwsAssertionError);
+      expect(
+        () => captured!.readVm<_CounterVm>(),
+        throwsA(isA<FlutterError>()),
+      );
     });
 
     testWidgets('child and builder are mutually exclusive', (tester) async {
@@ -70,6 +73,64 @@ void main() {
         ),
         throwsAssertionError,
       );
+    });
+
+    testWidgets('passing both child and builder throws', (tester) async {
+      expect(
+        () => ViewModelProvider<_CounterVm, int>(
+          create: (_) => _CounterVm(),
+          child: const SizedBox(),
+          builder: (_) => const SizedBox(),
+        ),
+        throwsAssertionError,
+      );
+    });
+
+    testWidgets(
+        'create runs once and is not re-invoked on teardown when it throws',
+        (tester) async {
+      var createCount = 0;
+      await tester.pumpWidget(
+        ViewModelProvider<_CounterVm, int>(
+          create: (_) {
+            createCount++;
+            throw StateError('boom');
+          },
+          child: const SizedBox(),
+        ),
+      );
+      expect(createCount, 1);
+      expect(tester.takeException(), isStateError);
+
+      // Removing the failed provider must not re-read `_vm` and call `create`
+      // a second time during dispose (the old `late final` initializer did,
+      // masking the original error).
+      await tester.pumpWidget(const SizedBox());
+      expect(createCount, 1);
+    });
+
+    testWidgets('readVm does not subscribe to state changes', (tester) async {
+      late _CounterVm vm;
+      var buildCount = 0;
+      await tester.pumpWidget(
+        ViewModelProvider<_CounterVm, int>(
+          create: (_) {
+            vm = _CounterVm();
+            return vm;
+          },
+          builder: (context) {
+            buildCount++;
+            context.readVm<_CounterVm>();
+            return const SizedBox();
+          },
+        ),
+      );
+      expect(buildCount, 1);
+
+      vm.increment();
+      await tester.pump();
+      // readVm reads without registering a dependency — no rebuild.
+      expect(buildCount, 1);
     });
   });
 }

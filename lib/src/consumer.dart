@@ -14,6 +14,12 @@ typedef ConsumerBuilder<S> = Widget Function(
 /// Rebuilds whenever the surrounding [ViewModel] of state type [S] notifies a
 /// change.
 ///
+/// Resolves the view model by **state type [S]** — the nearest enclosing
+/// [ViewModelProvider] whose state type is [S]. Give each provider a dedicated
+/// state class; never key a [Consumer] on a primitive (`int`, `String`) or on
+/// a state type shared by nested providers, or the nearest — possibly wrong —
+/// view model is bound silently.
+///
 /// Use [Consumer] when the widget genuinely depends on the full state object
 /// (or on multiple fields with cross-dependencies). For a single derived
 /// value, prefer [Selector] — it only rebuilds when the selected projection
@@ -56,12 +62,13 @@ class _ConsumerState<S> extends State<Consumer<S>> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     final scope = context.dependOnInheritedWidgetOfExactType<_StateScope<S>>();
-    assert(
-      scope != null,
-      'Consumer<$S>: no ViewModelProvider with state type $S found above this '
-      'BuildContext.',
-    );
-    final next = scope!.viewModel;
+    if (scope == null) {
+      throw FlutterError(
+        'Consumer<$S>: no ViewModelProvider with state type $S found above '
+        'this BuildContext.',
+      );
+    }
+    final next = scope.viewModel;
     if (!identical(next, _vm)) {
       _vm?.removeListener(_onChange);
       _vm = next..addListener(_onChange);

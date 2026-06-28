@@ -20,7 +20,7 @@ It's for teams that picked MVVM with constructor injection on purpose and just n
 
 ```yaml
 dependencies:
-  mvvm_lite: ^0.1.0
+  mvvm_lite: ^0.2.0
 ```
 
 ## Quick start
@@ -136,13 +136,15 @@ Selector<MyState, List<Item>>(
 
 The `selector` and `builder` callbacks use named typedef'd signatures, so your IDE autocompletes `(state)`, `(context, value, child)` — not `(p0, p1)`.
 
+> **Resolution is by state type.** `Consumer<S>` and `Selector<S, T>` bind to the _nearest_ `ViewModelProvider` whose state type is `S` (whereas `readVm<VM>()` resolves by view-model type). Give each provider a dedicated state class — don't key a `Consumer`/`Selector` on a primitive (`int`, `String`) or on a state type reused across nested providers, or the wrong (nearest) view model is selected silently.
+
 ### `context.readVm<VM>()`
 
 ```dart
 context.readVm<MyVM>().doSomething();
 ```
 
-Looks up the nearest `ViewModelProvider<VM, …>` ancestor and returns the view model without subscribing. Use for one-shot calls from event handlers.
+Looks up the nearest `ViewModelProvider<VM, …>` ancestor and returns the view model without subscribing. Use for one-shot calls from event handlers. Throws a `FlutterError` — in both debug and release builds — if no matching provider is in scope.
 
 Named `readVm` rather than `read` to avoid colliding with `provider`'s `BuildContext.read<T>()` extension when both packages are present during migration.
 

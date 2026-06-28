@@ -15,3 +15,5 @@ linter:
     - require_trailing_commas
     - unawaited_futures
     - public_member_api_docs
+    - directives_ordering
+    - always_declare_return_types

@@ -1,7 +1,7 @@
 name: mvvm_lite_example
 description: Demo app for the mvvm_lite package — counter + async fetch showing Selector vs Consumer.
 publish_to: "none"
-version: 0.1.0
+version: 0.2.0
 
 environment:
   sdk: ^3.0.0
@@ -16,7 +16,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  lints: ^4.0.0
+  lints: ^6.1.0
 
 flutter:
   uses-material-design: true

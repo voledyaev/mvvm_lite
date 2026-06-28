@@ -55,23 +55,26 @@ class ViewModelProvider<VM extends ViewModel<S>, S> extends StatefulWidget {
 
 class _ViewModelProviderState<VM extends ViewModel<S>, S>
     extends State<ViewModelProvider<VM, S>> {
-  late final VM _vm = widget.create(context);
+  VM? _vm;
+
+  @override
+  void initState() {
+    super.initState();
+    _vm = widget.create(context);
+  }
 
   @override
   void dispose() {
-    _vm.dispose();
+    _vm?.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => _VmScope<VM>(
-        viewModel: _vm,
+        viewModel: _vm!,
         child: _StateScope<S>(
-          viewModel: _vm,
-          child: Builder(
-            builder: (context) =>
-                widget.child ?? widget.builder!(context),
-          ),
+          viewModel: _vm!,
+          child: widget.child ?? Builder(builder: widget.builder!),
         ),
       );
 }
