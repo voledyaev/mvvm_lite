@@ -1,0 +1,8 @@
+version: 2
+updates:
+  # Only the CI actions: the package itself has no dependencies beyond the
+  # Flutter SDK, and `flutter_lints` is pinned by hand.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
