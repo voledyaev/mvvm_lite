@@ -1,0 +1,17 @@
+# Keep the published archive small: pub.dev only needs the example's Dart
+# sources, pubspec and README to render the "Example" tab. The generated
+# platform folders are ~95% of the archive and are useless to anyone reading
+# the package.
+#
+# NOTE: this file must stay in `example/`, never in the repository root — a
+# root-level .pubignore replaces the root .gitignore for pub, which would drop
+# the `build/` and `.dart_tool/` exclusions and blow the archive up to tens of
+# megabytes.
+android/
+ios/
+linux/
+macos/
+web/
+windows/
+.metadata
+coverage/

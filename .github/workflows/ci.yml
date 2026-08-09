@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  stable:
+    name: Flutter stable
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      - name: Format
+        run: dart format --output=none --set-exit-if-changed lib test example/lib example/test
+      - name: Analyze
+        run: flutter analyze
+      - name: Test
+        run: flutter test
+      - name: Example tests
+        working-directory: example
+        run: |
+          flutter pub get
+          flutter test
+      - name: Publish dry run
+        run: dart pub publish --dry-run
+
+  score:
+    name: pub.dev score
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter pub get
+      # The package sits at the maximum 160 points; the threshold leaves room
+      # for pana's own scoring changes while still catching a real regression.
+      - name: pana
+        run: |
+          dart pub global activate pana
+          dart pub global run pana --exit-code-threshold 10 --no-warning .
+
+  floor:
+    name: Oldest supported SDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          # The oldest stable Flutter shipping the Dart version in pubspec.yaml.
+          flutter-version: 3.32.0
+      - run: flutter pub get
+      - run: flutter test
