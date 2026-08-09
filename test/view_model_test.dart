@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mvvm_lite/mvvm_lite.dart';
 
@@ -15,12 +16,18 @@ class _CounterVm extends ViewModel<int> {
     state = result;
   }
 
-  void bindTo(Stream<int> stream) => bindStream(stream, (value) {
-        state = value;
-      });
-
-  // Expose protected `mounted` for tests.
-  bool get isMounted => mounted;
+  StreamSubscription<int> bindTo(
+    Stream<int> stream, {
+    void Function(Object error, StackTrace stackTrace)? onError,
+    void Function()? onDone,
+    bool cancelOnError = false,
+  }) => bindStream(
+    stream,
+    (value) => state = value,
+    onError: onError,
+    onDone: onDone,
+    cancelOnError: cancelOnError,
+  );
 }
 
 void main() {
@@ -61,9 +68,9 @@ void main() {
 
     test('mounted flips to false after dispose', () {
       final vm = _CounterVm();
-      expect(vm.isMounted, isTrue);
+      expect(vm.mounted, isTrue);
       vm.dispose();
-      expect(vm.isMounted, isFalse);
+      expect(vm.mounted, isFalse);
     });
 
     test('async writes after dispose are skipped via mounted check', () async {
@@ -107,6 +114,138 @@ void main() {
       // Disposed vm should not have updated state.
       expect(vm.state, 0);
       await controller.close();
+    });
+
+    test('writing state after dispose throws and leaves the state intact', () {
+      final vm = _CounterVm()..setTo(3);
+      var notifications = 0;
+      vm.addListener(() => notifications++);
+      vm.dispose();
+
+      expect(() => vm.increment(), throwsA(isA<FlutterError>()));
+      expect(vm.state, 3);
+      expect(notifications, 0);
+    });
+
+    test('bindStream after dispose throws', () {
+      final vm = _CounterVm()..dispose();
+
+      expect(
+        () => vm.bindTo(const Stream<int>.empty()),
+        throwsA(isA<FlutterError>()),
+      );
+    });
+
+    test('bindStream forwards errors to onError', () async {
+      final vm = _CounterVm();
+      final controller = StreamController<int>();
+      Object? captured;
+      vm.bindTo(controller.stream, onError: (error, _) => captured = error);
+
+      controller.addError(StateError('boom'));
+      await Future<void>.delayed(Duration.zero);
+
+      expect(captured, isStateError);
+      await controller.close();
+    });
+
+    test('bindStream skips onError and onDone after dispose', () async {
+      final vm = _CounterVm();
+      final controller = StreamController<int>();
+      var errors = 0;
+      var dones = 0;
+      vm.bindTo(
+        controller.stream,
+        onError: (_, _) => errors++,
+        onDone: () => dones++,
+      );
+
+      vm.dispose();
+      controller.addError(StateError('boom'));
+      await controller.close();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(errors, 0);
+      expect(dones, 0);
+    });
+
+    test('bindStream calls onDone when the stream closes', () async {
+      final vm = _CounterVm();
+      final controller = StreamController<int>();
+      var dones = 0;
+      vm.bindTo(controller.stream, onDone: () => dones++);
+
+      await controller.close();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(dones, 1);
+    });
+
+    test(
+      'bindStream returns a subscription that can be cancelled early',
+      () async {
+        final vm = _CounterVm();
+        final controller = StreamController<int>();
+        final subscription = vm.bindTo(controller.stream);
+
+        await subscription.cancel();
+        controller.add(5);
+        await Future<void>.delayed(Duration.zero);
+        expect(vm.state, 0);
+
+        // dispose cancels a second time — must not throw.
+        vm.dispose();
+        await controller.close();
+      },
+    );
+
+    testWidgets('works as a ValueListenable', (tester) async {
+      final vm = _CounterVm();
+      addTearDown(vm.dispose);
+      expect(vm.value, vm.state);
+
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: ValueListenableBuilder<int>(
+            valueListenable: vm,
+            builder: (_, value, _) => Text('value=$value'),
+          ),
+        ),
+      );
+      expect(find.text('value=0'), findsOneWidget);
+
+      vm.increment();
+      await tester.pump();
+      expect(find.text('value=1'), findsOneWidget);
+    });
+
+    test('dispose cancels the source subscription, not just the callbacks', () {
+      final vm = _CounterVm();
+      final controller = StreamController<int>();
+      vm.bindTo(controller.stream);
+      expect(controller.hasListener, isTrue);
+
+      vm.dispose();
+
+      // The guards inside bindStream would make a "state did not change" check
+      // pass even if nothing were cancelled; this asserts on the source.
+      expect(controller.hasListener, isFalse);
+    });
+
+    test('dispose survives a subscription whose cancel throws', () async {
+      final vm = _CounterVm();
+      final throwing = StreamController<int>(
+        onCancel: () => throw StateError('boom'),
+      );
+      final healthy = StreamController<int>();
+      vm.bindTo(throwing.stream);
+      vm.bindTo(healthy.stream);
+
+      expect(vm.dispose, returnsNormally);
+      expect(healthy.hasListener, isFalse);
+      expect(vm.mounted, isFalse);
+      await healthy.close();
     });
 
     test('toString includes the identity and current state', () {
