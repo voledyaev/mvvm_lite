@@ -31,16 +31,16 @@ class _FormVm extends ViewModel<_FormState> {
 }
 
 void main() {
-  group('Selector', () {
+  group('ViewModelSelector', () {
     testWidgets('builds with the selected value', (tester) async {
       await tester.pumpWidget(
         Directionality(
           textDirection: TextDirection.ltr,
-          child: ViewModelProvider<_FormVm, _FormState>(
+          child: ViewModelProvider<_FormVm>(
             create: (_) => _FormVm(),
-            child: Selector<_FormState, String>(
+            child: ViewModelSelector<_FormState, String>(
               selector: (state) => state.name,
-              builder: (_, name, __) => Text('name=$name'),
+              builder: (_, name, _) => Text('name=$name'),
             ),
           ),
         ),
@@ -48,21 +48,22 @@ void main() {
       expect(find.text('name=Alice'), findsOneWidget);
     });
 
-    testWidgets('does NOT rebuild when an unrelated field changes',
-        (tester) async {
+    testWidgets('does NOT rebuild when an unrelated field changes', (
+      tester,
+    ) async {
       late _FormVm vm;
       var buildCount = 0;
       await tester.pumpWidget(
         Directionality(
           textDirection: TextDirection.ltr,
-          child: ViewModelProvider<_FormVm, _FormState>(
+          child: ViewModelProvider<_FormVm>(
             create: (_) {
               vm = _FormVm();
               return vm;
             },
-            child: Selector<_FormState, String>(
+            child: ViewModelSelector<_FormState, String>(
               selector: (state) => state.name,
-              builder: (_, name, __) {
+              builder: (_, name, _) {
                 buildCount++;
                 return Text('name=$name');
               },
@@ -84,28 +85,29 @@ void main() {
       expect(find.text('name=Bob'), findsOneWidget);
     });
 
-    testWidgets('shouldRebuild override controls rebuilds for collections',
-        (tester) async {
+    testWidgets('buildWhen override controls rebuilds for collections', (
+      tester,
+    ) async {
       late _ListVm vm;
       var buildCount = 0;
       await tester.pumpWidget(
         Directionality(
           textDirection: TextDirection.ltr,
-          child: ViewModelProvider<_ListVm, List<int>>(
+          child: ViewModelProvider<_ListVm>(
             create: (_) {
               vm = _ListVm();
               return vm;
             },
-            child: Selector<List<int>, List<int>>(
+            child: ViewModelSelector<List<int>, List<int>>(
               selector: (state) => state,
-              shouldRebuild: (a, b) {
+              buildWhen: (a, b) {
                 if (a.length != b.length) return true;
                 for (var i = 0; i < a.length; i++) {
                   if (a[i] != b[i]) return true;
                 }
                 return false;
               },
-              builder: (_, list, __) {
+              builder: (_, list, _) {
                 buildCount++;
                 return Text('len=${list.length}');
               },
@@ -126,30 +128,70 @@ void main() {
       expect(buildCount, 2);
     });
 
-    testWidgets('throws a FlutterError when no provider is in scope',
-        (tester) async {
+    testWidgets('buildWhen also gates values arriving from a parent rebuild', (
+      tester,
+    ) async {
+      // An inline selector closure is never identical across rebuilds, so a
+      // parent rebuild used to slip a new value past buildWhen entirely.
+      late _FormVm vm;
+      final rendered = <String>[];
+
+      Widget build() => Directionality(
+        textDirection: TextDirection.ltr,
+        child: ViewModelProvider<_FormVm>(
+          create: (_) => vm = _FormVm(),
+          child: ViewModelSelector<_FormState, String>(
+            selector: (state) => state.name,
+            buildWhen: (previous, next) => false,
+            builder: (_, name, _) {
+              rendered.add(name);
+              return Text(name);
+            },
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(build());
+      expect(rendered, ['Alice']);
+
+      vm.setName('Bob');
+      await tester.pump();
+      expect(rendered, ['Alice']);
+
+      // Same tree, fresh closures. The parent rebuild reaches the builder, but
+      // it must carry the frozen value — before, the new closure's result was
+      // adopted without consulting buildWhen at all.
+      await tester.pumpWidget(build());
+      expect(rendered, isNot(contains('Bob')));
+      expect(find.text('Alice'), findsOneWidget);
+    });
+
+    testWidgets('throws a FlutterError when no provider is in scope', (
+      tester,
+    ) async {
       await tester.pumpWidget(
         Directionality(
           textDirection: TextDirection.ltr,
-          child: Selector<_FormState, String>(
+          child: ViewModelSelector<_FormState, String>(
             selector: (state) => state.name,
-            builder: (_, name, __) => Text('name=$name'),
+            builder: (_, name, _) => Text('name=$name'),
           ),
         ),
       );
       expect(tester.takeException(), isA<FlutterError>());
     });
 
-    testWidgets('recomputes the value when the selector callback changes',
-        (tester) async {
-      Widget build(StateSelector<_FormState, String> selector) =>
+    testWidgets('recomputes the value when the selector callback changes', (
+      tester,
+    ) async {
+      Widget build(StateProjection<_FormState, String> selector) =>
           Directionality(
             textDirection: TextDirection.ltr,
-            child: ViewModelProvider<_FormVm, _FormState>(
+            child: ViewModelProvider<_FormVm>(
               create: (_) => _FormVm(),
-              child: Selector<_FormState, String>(
+              child: ViewModelSelector<_FormState, String>(
                 selector: selector,
-                builder: (_, value, __) => Text('value=$value'),
+                builder: (_, value, _) => Text('value=$value'),
               ),
             ),
           );
@@ -172,12 +214,12 @@ void main() {
       await tester.pumpWidget(
         Directionality(
           textDirection: TextDirection.ltr,
-          child: ViewModelProvider<_FormVm, _FormState>(
+          child: ViewModelProvider<_FormVm>(
             create: (_) {
               vm = _FormVm();
               return vm;
             },
-            child: Selector<_FormState, String>(
+            child: ViewModelSelector<_FormState, String>(
               selector: (state) => state.name,
               child: const SizedBox(key: childKey),
               builder: (_, name, child) {
@@ -195,32 +237,33 @@ void main() {
       expect(identical(first, second), isTrue);
     });
 
-    testWidgets('re-subscribes when moved to a different provider',
-        (tester) async {
+    testWidgets('re-subscribes when moved to a different provider', (
+      tester,
+    ) async {
       final selectorKey = GlobalKey();
       late _FormVm vmA;
       late _FormVm vmB;
 
-      Widget selector() => Selector<_FormState, String>(
-            key: selectorKey,
-            selector: (state) => state.name,
-            builder: (_, name, __) => Text('name=$name'),
-          );
+      Widget selector() => ViewModelSelector<_FormState, String>(
+        key: selectorKey,
+        selector: (state) => state.name,
+        builder: (_, name, _) => Text('name=$name'),
+      );
       Widget build({required bool underA}) => Directionality(
-            textDirection: TextDirection.ltr,
-            child: Column(
-              children: [
-                ViewModelProvider<_FormVm, _FormState>(
-                  create: (_) => vmA = _FormVm(),
-                  child: underA ? selector() : const SizedBox(),
-                ),
-                ViewModelProvider<_FormVm, _FormState>(
-                  create: (_) => vmB = (_FormVm()..setName('Bob')),
-                  child: underA ? const SizedBox() : selector(),
-                ),
-              ],
+        textDirection: TextDirection.ltr,
+        child: Column(
+          children: [
+            ViewModelProvider<_FormVm>(
+              create: (_) => vmA = _FormVm(),
+              child: underA ? selector() : const SizedBox(),
             ),
-          );
+            ViewModelProvider<_FormVm>(
+              create: (_) => vmB = (_FormVm()..setName('Bob')),
+              child: underA ? const SizedBox() : selector(),
+            ),
+          ],
+        ),
+      );
 
       await tester.pumpWidget(build(underA: true));
       expect(find.text('name=Alice'), findsOneWidget);

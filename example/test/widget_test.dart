@@ -15,8 +15,9 @@ void main() {
     expect(find.text('Count: 0'), findsNothing);
   });
 
-  testWidgets('load button shows progress then updates the label',
-      (tester) async {
+  testWidgets('load button shows progress then updates the label', (
+    tester,
+  ) async {
     await tester.pumpWidget(const ExampleApp());
 
     expect(find.text('Tap to increment'), findsOneWidget);
