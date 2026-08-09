@@ -1,6 +1,6 @@
 # mvvm_lite_example
 
-A minimal demo for the [`mvvm_lite`](../) package — a counter with an async "load label" action that demonstrates `Selector` for granular rebuilds and `Consumer` for full-state subscriptions.
+A minimal demo for the [`mvvm_lite`](https://pub.dev/packages/mvvm_lite) package — a counter with an async "load label" action that demonstrates `ViewModelSelector` for granular rebuilds and `ViewModelBuilder` for full-state subscriptions.
 
 ## Run
 
