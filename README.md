@@ -1,67 +1,64 @@
 # mvvm_lite
 
-A tiny, zero-dependency MVVM toolkit for Flutter.
-
-`mvvm_lite` gives you a `ViewModel` base class, a scoped provider that owns its lifecycle, and `Consumer` / `Selector` widgets with sane parameter names — and nothing else. No DI, no routing, no service-locator, no code generation. A few hundred lines across six small files; the only dependency is the Flutter SDK.
-
-It's for teams that picked MVVM with constructor injection on purpose and just need a clean reactive primitive that won't be quietly deprecated or grow into a framework.
-
-## Why another one
-
-| You want                                                                                      | Use                                          |
-| --------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| Global cross-screen caching, async lifecycle, fine-grained reactivity, a strong opinion       | [`riverpod`](https://pub.dev/packages/riverpod) |
-| Event-sourced, audit-friendly state machines for big teams                                    | [`flutter_bloc`](https://pub.dev/packages/flutter_bloc) |
-| MVVM with constructor injection, `ChangeNotifier` semantics, granular rebuilds, zero magic    | **this**                                     |
-
-`provider` is the closest thing in spirit, but: it hasn't seen new features in years, the `Selector` builder shows `p0, p1` in IDE autocomplete instead of named parameters, and it's a much larger surface than the MVVM pattern actually needs. `mvvm_lite` extracts the 5% you'd use anyway, fixes the param-naming nit, and stops.
+A tiny, zero-dependency MVVM toolkit for Flutter: a `ViewModel` base class, a provider that owns its lifecycle, and three widgets to read it. No DI, no routing, no code generation.
 
 ## Install
 
 ```yaml
 dependencies:
-  mvvm_lite: ^0.2.0
+  mvvm_lite: ^1.0.0
 ```
 
 ## Quick start
 
 ```dart
-import 'package:flutter/material.dart';
-import 'package:mvvm_lite/mvvm_lite.dart';
-
 class CounterState {
-  const CounterState({this.count = 0});
+  const CounterState({this.count = 0, this.isSaving = false});
+
   final int count;
-  CounterState copyWith({int? count}) => CounterState(count: count ?? this.count);
+  final bool isSaving;
+
+  CounterState copyWith({int? count, bool? isSaving}) =>
+      CounterState(count: count ?? this.count, isSaving: isSaving ?? this.isSaving);
 
   @override
   bool operator ==(Object other) =>
-      other is CounterState && other.count == count;
+      other is CounterState && other.count == count && other.isSaving == isSaving;
+
   @override
-  int get hashCode => count.hashCode;
+  int get hashCode => Object.hash(count, isSaving);
 }
 
 class CounterViewModel extends ViewModel<CounterState> {
-  CounterViewModel() : super(const CounterState());
+  CounterViewModel(this._repo) : super(const CounterState());
+
+  final CounterRepo _repo;
+
   void increment() => state = state.copyWith(count: state.count + 1);
+
+  Future<void> save() async {
+    state = state.copyWith(isSaving: true);
+    await _repo.save(state.count);
+    if (!mounted) return;
+    state = state.copyWith(isSaving: false);
+  }
 }
 
 class CounterPage extends StatelessWidget {
   const CounterPage({super.key});
 
   @override
-  Widget build(BuildContext context) =>
-      ViewModelProvider<CounterViewModel, CounterState>(
-        create: (_) => CounterViewModel(),
+  Widget build(BuildContext context) => ViewModelProvider(
+        create: (_) => CounterViewModel(getIt()),
         builder: (context) => Scaffold(
           body: Center(
-            child: Selector<CounterState, int>(
+            child: ViewModelSelector<CounterState, int>(
               selector: (state) => state.count,
-              builder: (_, count, __) => Text('$count'),
+              builder: (context, count, child) => Text('$count'),
             ),
           ),
           floatingActionButton: FloatingActionButton(
-            onPressed: () => context.readVm<CounterViewModel>().increment(),
+            onPressed: context.viewModel<CounterViewModel>().increment,
             child: const Icon(Icons.add),
           ),
         ),
@@ -69,183 +66,271 @@ class CounterPage extends StatelessWidget {
 }
 ```
 
-## API
-
-### `ViewModel<S>`
+## ViewModel
 
 ```dart
-abstract class ViewModel<S> extends ChangeNotifier {
+class ProfileViewModel extends ViewModel<ProfileState> {
+  ProfileViewModel(this._repo) : super(const ProfileState()) {
+    bindStream(
+      _repo.updates,
+      (user) => state = state.copyWith(user: user),
+      onError: (error, _) => state = state.copyWith(error: error),
+    );
+  }
+
+  final ProfileRepo _repo;
+
+  Future<void> refresh() async {
+    state = state.copyWith(isLoading: true);
+    final user = await _repo.fetch();
+    if (!mounted) return;               // always, after every await
+    state = state.copyWith(isLoading: false, user: user);
+  }
+}
+```
+
+```dart
+abstract class ViewModel<S> extends ChangeNotifier implements ValueListenable<S> {
   ViewModel(S initial);
 
   S get state;
-  @protected set state(S value);   // notifyListeners only on `!=`
+  S get value;                          // ValueListenable — same as `state`
+  @protected set state(S value);        // notifies only when `!=`
 
-  @protected bool get mounted;     // check after every await
-  @protected void bindStream<E>(Stream<E>, void Function(E));
+  bool get mounted;
+
+  @protected StreamSubscription<E> bindStream<E>(
+    Stream<E> stream,
+    void Function(E event) onData, {
+    void Function(Object error, StackTrace stackTrace)? onError,
+    void Function()? onDone,
+    bool cancelOnError = false,
+  });
 }
 ```
 
-Subclass it and write `state = state.copyWith(...)`. Equality decides whether listeners fire — pair with `freezed`, records, or `==`-implementing classes.
+Equality decides whether listeners fire, so pair it with `freezed`, records, or hand-written `==`.
 
-`bindStream` is for "subscribe once and forget"; if you need to cancel mid-life or replace on event, keep your own `StreamSubscription` field.
+Writing `state` after `dispose` throws a `FlutterError` in debug and release, without changing the state — that is what the `mounted` check prevents. Subscriptions from `bindStream` are cancelled on dispose; the returned subscription can be cancelled earlier. Without `onError` a stream error goes to the surrounding `Zone` and never reaches the view model.
 
-### `ViewModelProvider<VM, S>`
+## ViewModelProvider
 
 ```dart
-ViewModelProvider<MyVM, MyState>(
-  create: (_) => MyVM(getIt<MyRepo>()),
-  child: const MyPage(),
+ViewModelProvider(
+  create: (_) => ProfileViewModel(getIt()),
+  child: const ProfileBody(),
+)
+
+ViewModelProvider(
+  create: (_) => ProfileViewModel(getIt()),
+  builder: (context) => ProfileBody(
+    onRefresh: context.viewModel<ProfileViewModel>().refresh,
+  ),
+)
+
+ViewModelProvider.value(
+  value: fakeViewModel,          // never disposed by the provider
+  child: const ProfileBody(),
 )
 ```
 
-Creates the view model eagerly when mounted, disposes it when removed. Pass either `child` (static subtree) or `builder` (when the immediate child needs `context.readVm<VM>()`). Not both, not neither.
+Creates the view model when mounted, disposes it when removed. Pass exactly one of `child` or `builder`. The type argument is inferred from `create`.
 
-Resolve VM dependencies inside `create` however you like — `mvvm_lite` doesn't ship a service locator. The example uses `get_it`; manual construction, `Provider.of`, or any other approach works equally well.
+`create` runs in `initState`, so it can use `context.viewModel<ParentVm>()`, `get_it` or `Provider.of(context, listen: false)`, but not `Theme.of`, `MediaQuery.of` or anything else that registers an inherited-widget dependency. Read those above the provider and pass them in.
 
-The `BuildContext` passed to `create` can be used to look up parent view models via `context.readVm<ParentVm>()` when one VM needs to observe or reference another.
-
-### `Consumer<S>`
+## ViewModelBuilder
 
 ```dart
-Consumer<MyState>(
-  builder: (context, state, child) => ...,
-  child: const ExpensiveStaticSubtree(), // optional
+ViewModelBuilder<ProfileState>(
+  builder: (context, state, child) => Text(state.userName),
+)
+
+ViewModelBuilder<ProfileState>(
+  buildWhen: (previous, next) => previous.items != next.items,
+  builder: (context, state, child) => ItemList(state.items),
+  child: const ExpensiveHeader(),      // built once, forwarded unchanged
 )
 ```
 
-Rebuilds on every state change. Pass a `child` when part of the subtree is static — it's forwarded into `builder` without rebuilding.
-
-### `Selector<S, T>`
+## ViewModelSelector
 
 ```dart
-Selector<MyState, String>(
+ViewModelSelector<ProfileState, String>(
   selector: (state) => state.userName,
   builder: (context, name, child) => Text(name),
 )
-```
 
-Rebuilds only when the projected value changes. Uses `==` by default. For collections without value equality, pass `shouldRebuild`:
+ViewModelSelector<ProfileState, (int, bool)>(
+  selector: (state) => (state.unread, state.isPremium),
+  builder: (context, value, child) => UnreadCount(value.$1, premium: value.$2),
+)
 
-```dart
-Selector<MyState, List<Item>>(
+ViewModelSelector<ProfileState, List<Item>>(
   selector: (state) => state.items,
-  shouldRebuild: (a, b) => !const ListEquality().equals(a, b),
-  builder: ...,
+  buildWhen: (a, b) => !const ListEquality().equals(a, b),  // package:collection
+  builder: (context, items, child) => ItemList(items),
 )
 ```
 
-The `selector` and `builder` callbacks use named typedef'd signatures, so your IDE autocompletes `(state)`, `(context, value, child)` — not `(p0, p1)`.
+Rebuilds only when the projection changes, compared with `==` unless `buildWhen` says otherwise.
 
-> **Resolution is by state type.** `Consumer<S>` and `Selector<S, T>` bind to the _nearest_ `ViewModelProvider` whose state type is `S` (whereas `readVm<VM>()` resolves by view-model type). Give each provider a dedicated state class — don't key a `Consumer`/`Selector` on a primitive (`int`, `String`) or on a state type reused across nested providers, or the wrong (nearest) view model is selected silently.
-
-### `context.readVm<VM>()`
+## ViewModelListener
 
 ```dart
-context.readVm<MyVM>().doSomething();
+ViewModelListener<ProfileState>(
+  listenWhen: (previous, next) => !previous.saved && next.saved,
+  listener: (context, state) =>
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved'))),
+  child: const ProfileBody(),
+)
 ```
 
-Looks up the nearest `ViewModelProvider<VM, …>` ancestor and returns the view model without subscribing. Use for one-shot calls from event handlers. Throws a `FlutterError` — in both debug and release builds — if no matching provider is in scope.
+Runs a side effect and rebuilds nothing. `listenWhen` receives the previous and next state, which is what makes an effect fire on a transition rather than on every change while a flag stays set.
 
-Named `readVm` rather than `read` to avoid colliding with `provider`'s `BuildContext.read<T>()` extension when both packages are present during migration.
+The `*When` gates apply to changes, not to the first pass: a builder and a selector always render once, and a listener never fires for the state that was already there when it mounted. In `buildWhen`, `previous` is the state the widget was last built with, so a declined change never becomes the baseline; in `listenWhen` it always advances.
 
-## Patterns
-
-### `mounted` checks after `await`
-
-Always:
+## context.viewModel
 
 ```dart
-Future<void> save() async {
-  state = state.copyWith(isSaving: true);
-  try {
-    await repo.save(state.payload);
-    if (!mounted) return;
-    state = state.copyWith(isSaving: false, saved: true);
-  } catch (e) {
-    if (!mounted) return;
-    state = state.copyWith(isSaving: false, error: e);
-  }
+onPressed: () => context.viewModel<ProfileViewModel>().refresh(),
+```
+
+Returns the nearest view model assignable to `VM` without subscribing. Throws a `FlutterError` in debug and release when there is no matching provider above.
+
+## Resolution
+
+The three widgets bind to the **nearest** provider whose view model is a `ViewModel<S>`, so keeping state types distinct is up to you:
+
+```dart
+// Ambiguous: nest these, even by accident, and the inner one wins silently.
+class SavedCountViewModel extends ViewModel<int> { ... }
+class DonationSumViewModel extends ViewModel<int> { ... }
+
+// Unambiguous: a type per view model.
+class SavedCount {
+  const SavedCount(this.value);
+  final int value;
 }
 ```
 
-The base class flips `mounted` to `false` in `dispose` — without the guard, your `state` setter will throw because the underlying `ChangeNotifier` has been disposed.
+Two things that surprise people: extension types are erased at runtime, so `ViewModel<SavedCount>` and `ViewModel<int>` are the same type and the wrapper buys nothing — use a class or a record. And generics are covariant, so `ViewModelBuilder<ProfileState>` also binds to a provider of `PremiumProfileState extends ProfileState`.
 
-### Stream subscriptions
+## Side effects
 
-For "listen forever, until the view model dies":
+Three different things tend to hide behind one "navigation event" field, and each has a shorter path.
+
+The result of a tap — return it:
 
 ```dart
-class FeedViewModel extends ViewModel<FeedState> {
-  FeedViewModel(this._repo) : super(const FeedState()) {
-    bindStream(_repo.stream, (event) {
-      state = state.copyWith(items: event.items);
-    });
+onPressed: () async {
+  final paid = await context.viewModel<CheckoutViewModel>().pay();
+  if (paid && context.mounted) Navigator.of(context).pushNamed('/receipt');
+},
+```
+
+A transition of real state — `ViewModelListener`:
+
+```dart
+ViewModelListener<ProfileState>(
+  listenWhen: (previous, next) => previous.profile is! AsyncError && next.profile is AsyncError,
+  listener: (context, state) {
+    if (ModalRoute.of(context)?.isCurrent ?? false) Navigator.of(context).pop();
+  },
+  child: const ProfileBody(),
+)
+```
+
+A genuine one-shot message — a nullable field that the effect clears:
+
+```dart
+ViewModelListener<MyState>(
+  listenWhen: (previous, next) => previous.navEvent == null && next.navEvent != null,
+  listener: (context, state) {
+    context.viewModel<MyVm>().clearNavEvent();
+    switch (state.navEvent!) {
+      case OpenChildPageNavEvent(:final id):
+        Navigator.of(context).pushNamed('/child', arguments: id);
+    }
+  },
+  child: const MyPageContent(),
+)
+```
+
+Clearing is load-bearing: the setter only notifies when the state changed, so an uncleared event can never fire twice. And a page below the top of the stack stays mounted, so check the route before navigating.
+
+## Testing
+
+```dart
+test('increments', () {
+  final vm = CounterViewModel(FakeRepo());
+  addTearDown(vm.dispose);
+
+  vm.increment();
+
+  expect(vm.state.count, 1);
+});
+```
+
+```dart
+class FakeProfileViewModel extends ProfileViewModel {
+  FakeProfileViewModel(ProfileState initial) : super(FakeProfileRepo()) {
+    emit(initial);
   }
-  final FeedRepo _repo;
+
+  void emit(ProfileState next) => state = next;
+
+  @override
+  Future<void> refresh() async {}
 }
+
+testWidgets('renders the profile', (tester) async {
+  final vm = FakeProfileViewModel(const ProfileState(name: 'Ada'));
+  addTearDown(vm.dispose);
+
+  await tester.pumpWidget(
+    MaterialApp(home: ViewModelProvider.value(value: vm, child: const ProfilePage())),
+  );
+  expect(find.text('Ada'), findsOneWidget);
+
+  vm.emit(const ProfileState(name: 'Grace'));
+  await tester.pump();
+  expect(find.text('Grace'), findsOneWidget);
+});
 ```
 
-For subscriptions you replace or cancel mid-life, hold a `StreamSubscription` field yourself and cancel it in an overridden `dispose`.
+`ViewModelProvider.value` never disposes what it is handed, so the test owns the lifecycle. Lookups match by assignability, so the page's own `context.viewModel<ProfileViewModel>()` finds the fake.
 
-### Navigation events
+## Trade-offs
 
-Keep navigation in the UI layer. Have the view model write `navEvent` into state; the page listens to its own view model and routes:
+- **No DI.** Wire dependencies in `create` yourself.
+- **No async-state type.** `ViewModel<S>` is just `S`; define your own loading/data/error union if you want one.
+- **No cross-screen sharing.** A provider owns one view model for as long as its subtree lives.
+- **No code generation.** `copyWith`, `==` and `hashCode` are yours to write or generate.
+- **No reactive composition.** Compose at the use-case layer, not between view models.
 
-```dart
-@override
-Widget build(BuildContext context) =>
-    ViewModelProvider<MyVm, MyState>(
-      create: (_) {
-        final vm = MyVm();
-        vm.addListener(() {
-          final event = vm.state.navEvent;
-          if (event == null) return;
-          vm.clearNavEvent();
-          switch (event) {
-            case PopMyPageNavEvent(): Navigator.of(context).pop();
-            case OpenChildPageNavEvent(:final id):
-              Navigator.of(context).pushNamed('/child', arguments: id);
-          }
-        });
-        return vm;
-      },
-      child: const MyPageContent(),
-    );
-```
+## Migrating from 0.2.x
 
-This keeps side-effects local and testable — view model logic is pure, side-effects are wired up exactly once per page.
+| 0.2.x | 1.0.0 |
+| --- | --- |
+| `Consumer<S>` | `ViewModelBuilder<S>` |
+| `Selector<S, T>` | `ViewModelSelector<S, T>` |
+| `Selector.shouldRebuild` | `ViewModelSelector.buildWhen` |
+| `context.readVm<VM>()` | `context.viewModel<VM>()` |
+| `ViewModelProvider<VM, S>` | `ViewModelProvider<VM>` |
+| `ConsumerBuilder<S>` | `ViewModelWidgetBuilder<S>` |
+| `SelectorBuilder<T>` | `SelectorWidgetBuilder<T>` |
+| `StateSelector<S, T>` | `StateProjection<S, T>` |
+| `SelectorShouldRebuild<T>` | `ViewModelBuilderCondition<T>` |
 
-## Trade-offs (read before adopting)
-
-- **No DI.** You wire dependencies into the `create` callback yourself, typically via a service locator like `get_it`. By design — DI is a separate concern.
-- **No async-state primitive.** `ViewModel<S>` is just `S`. If you want `AsyncValue<T>`-style sealed loading/data/error states, define them yourself in your project (a few dozen lines). The package intentionally doesn't ship one — different projects want different semantics.
-- **No cross-screen state sharing.** Each `ViewModelProvider` owns one view model that lives exactly as long as the page. If you need a shared, app-wide cached state graph, you want `riverpod` instead.
-- **No code generation.** State classes (`copyWith`, `==`, `hashCode`) are your responsibility — use `freezed` or records if hand-writing them is painful.
-- **No reactive composition.** A view model can listen to another's stream via `bindStream`, but there's no "computed provider" abstraction. Compose at the application/use-case layer instead.
-
-## Comparison
-
-| Feature                       | mvvm_lite        | provider              | riverpod         | flutter_bloc     |
-| ----------------------------- | ---------------- | --------------------- | ---------------- | ---------------- |
-| LOC of source                 | ~250             | ~3000                 | ~10k+            | ~5k+             |
-| External dependencies         | 0                | 2 (`collection`, `nested`) | several     | several          |
-| Code generation               | no               | no                    | optional         | optional         |
-| Built-in DI                   | no               | partial               | yes              | no               |
-| Async-state sealed type       | no               | no                    | yes (`AsyncValue`)| no              |
-| Cross-screen state cache      | no               | manual                | yes              | manual           |
-| Granular rebuilds via selector| yes              | yes                   | yes (`select`)   | yes (`buildWhen`)|
-| IDE-friendly param names      | yes              | no (`p0, p1`)         | yes              | yes              |
-| Side-effects from state       | UI layer         | UI layer              | discouraged      | UI layer (`listener`) |
+There are no deprecated aliases: a stale call site is a compile error.
 
 ## Status
 
-- Stable API surface; semantic versioning from `0.1.0`.
-- Targets Flutter `>=3.10.0`, Dart `>=3.0.0`. Uses only ancient Flutter SDK primitives (`ChangeNotifier`, `InheritedWidget`, `StatefulWidget`) — no version-specific APIs.
-- Public-member docstrings on everything; `public_member_api_docs` is on in the lint config.
+Stable API from `1.0.0`. Requires Dart `^3.8.0` (Flutter 3.32 and newer).
 
 ## Contributing
 
-Issues and PRs welcome at the repository. Keep the surface area small — this is deliberately a tiny package and will stay one.
+See [CONTRIBUTING.md](CONTRIBUTING.md). Keep the surface small — that is the feature.
 
 ## License
 
