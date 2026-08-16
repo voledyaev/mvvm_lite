@@ -326,7 +326,12 @@ There are no deprecated aliases: a stale call site is a compile error.
 
 ## Status
 
-Stable API from `1.0.0`. Requires Dart `^3.8.0` (Flutter 3.32 and newer).
+Stable API from `1.0.0`. Requires Dart `^3.8.0` (Flutter 3.32 and newer), and is
+verified up to the current stable — Flutter 3.47 / Dart 3.13.
+
+The Material and Cupertino split in Flutter 3.47 does not reach this package: it
+imports only `foundation.dart` and `widgets.dart`. The `example/` app has moved
+to `material_ui` and needs Flutter 3.44 or newer on its own.
 
 ## Contributing
 
