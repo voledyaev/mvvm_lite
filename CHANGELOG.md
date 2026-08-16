@@ -1,3 +1,14 @@
+## 1.0.1
+
+No change to the API or to the `^3.8.0` SDK floor — Flutter 3.32 and newer stays
+supported.
+
+- Verified against Flutter 3.47 / Dart 3.13. The Material and Cupertino split in
+  3.47 does not reach this package — it imports only `foundation.dart` and
+  `widgets.dart`.
+- `example/` moved from `package:flutter/material.dart` to `material_ui` 1.0 and
+  now requires Flutter 3.44 or newer on its own.
+
 ## 1.0.0
 
 First stable release. The API surface is now committed to: additions come in

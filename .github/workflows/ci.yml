@@ -54,5 +54,26 @@ jobs:
         with:
           # The oldest stable Flutter shipping the Dart version in pubspec.yaml.
           flutter-version: 3.32.0
-      - run: flutter pub get
+      # `flutter pub get` resolves `example/` too, and the demo sits on a newer
+      # floor — without the flag this job fails on the demo, not on the package.
+      - run: flutter pub get --no-example
       - run: flutter test
+
+  bleeding-edge:
+    name: Next stable (beta)
+    runs-on: ubuntu-latest
+    # Red here means the next stable breaks users, not that this PR is bad.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: beta
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - name: Example tests
+        working-directory: example
+        run: |
+          flutter pub get
+          flutter test

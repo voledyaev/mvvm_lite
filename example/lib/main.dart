@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:mvvm_lite/mvvm_lite.dart';
 
 void main() => runApp(const ExampleApp());

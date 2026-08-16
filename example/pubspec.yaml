@@ -3,12 +3,15 @@ description: Demo app for the mvvm_lite package — a counter with an async acti
 publish_to: "none"
 version: 1.0.0
 
+# Tracks the newest stable; the package floor is far lower — see ../pubspec.yaml.
 environment:
-  sdk: ^3.8.0
+  sdk: ^3.12.0
+  flutter: ">=3.44.0"
 
 dependencies:
   flutter:
     sdk: flutter
+  material_ui: ^1.0.0
   mvvm_lite:
     path: ..
 

@@ -20,6 +20,14 @@ change. Only `sdk:` is declared — a `flutter:` constraint alongside it adds a
 second number that can silently contradict the first, since the Dart version is
 determined by the Flutter release anyway.
 
+`example/` is the one exception and declares both numbers. It is
+`publish_to: none` and never resolved as a dependency, so it tracks the newest
+stable instead — currently Dart 3.12 / Flutter 3.44, what `material_ui` needs.
+Do not let that floor drift into `../pubspec.yaml`.
+
+The `bleeding-edge` job runs the suite on the beta channel, so a future stable's
+breakage shows up here first. It is advisory and does not block a PR.
+
 ## Before opening a PR
 
 ```bash
