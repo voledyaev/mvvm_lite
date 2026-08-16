@@ -10,7 +10,7 @@ jobs:
     name: Flutter stable
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -33,7 +33,7 @@ jobs:
     name: pub.dev score
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -49,7 +49,7 @@ jobs:
     name: Oldest supported SDK
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           # The oldest stable Flutter shipping the Dart version in pubspec.yaml.
@@ -65,7 +65,7 @@ jobs:
     # Red here means the next stable breaks users, not that this PR is bad.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: subosito/flutter-action@v2
         with:
           channel: beta
