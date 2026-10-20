@@ -133,6 +133,40 @@ void main() {
       expect(pairs, ['0->1', '0->2']);
     });
 
+    testWidgets('a new buildWhen re-checks the state it was frozen on', (
+      tester,
+    ) async {
+      final vm = _CounterVm();
+      addTearDown(vm.dispose);
+
+      Widget build(ViewModelBuilderCondition<int>? buildWhen) => Directionality(
+        textDirection: TextDirection.ltr,
+        child: ViewModelProvider.value(
+          value: vm,
+          child: ViewModelBuilder<int>(
+            buildWhen: buildWhen,
+            builder: (_, state, _) => Text('value=$state'),
+          ),
+        ),
+      );
+
+      await tester.pumpWidget(build((previous, next) => false));
+      vm
+        ..increment()
+        ..increment();
+      await tester.pump();
+      expect(find.text('value=0'), findsOneWidget);
+
+      // A different gate that still declines keeps the subtree frozen.
+      await tester.pumpWidget(build((previous, next) => next > 2));
+      expect(find.text('value=0'), findsOneWidget);
+
+      // Lifting the gate shows the current state at once, without waiting for
+      // the view model to notify again.
+      await tester.pumpWidget(build(null));
+      expect(find.text('value=2'), findsOneWidget);
+    });
+
     testWidgets('static child is reused across rebuilds', (tester) async {
       late _CounterVm vm;
       const childKey = ValueKey('static-child');

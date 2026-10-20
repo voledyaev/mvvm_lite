@@ -199,6 +199,51 @@ void main() {
       },
     );
 
+    test('the returned subscription forwards to the source', () async {
+      // The subscription is a hand-written wrapper; a slip in any delegating
+      // member would only surface in user code.
+      final vm = _CounterVm();
+      addTearDown(vm.dispose);
+      final controller = StreamController<int>();
+      final subscription = vm.bindTo(controller.stream);
+
+      subscription.pause();
+      expect(subscription.isPaused, isTrue);
+      controller.add(1);
+      await Future<void>.delayed(Duration.zero);
+      expect(vm.state, 0);
+
+      subscription.resume();
+      expect(subscription.isPaused, isFalse);
+      await Future<void>.delayed(Duration.zero);
+      expect(vm.state, 1);
+
+      final seen = <int>[];
+      var dones = 0;
+      subscription
+        ..onData(seen.add)
+        ..onDone(() => dones++);
+      controller.add(2);
+      await controller.close();
+      await Future<void>.delayed(Duration.zero);
+
+      expect(seen, [2]);
+      expect(dones, 1);
+    });
+
+    test('asFuture on the returned subscription completes on done', () async {
+      final vm = _CounterVm();
+      addTearDown(vm.dispose);
+      final controller = StreamController<int>();
+      final done = vm.bindTo(controller.stream).asFuture<String>('finished');
+
+      controller.add(3);
+      await controller.close();
+
+      expect(await done, 'finished');
+      expect(vm.state, 3);
+    });
+
     testWidgets('works as a ValueListenable', (tester) async {
       final vm = _CounterVm();
       addTearDown(vm.dispose);
