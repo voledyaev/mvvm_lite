@@ -104,7 +104,11 @@ class _ViewModelSelectorState<S, T> extends State<ViewModelSelector<S, T>> {
     // A new selector closure — which an inline lambda is on every parent
     // rebuild — goes through the same [buildWhen] gate as a state change, so a
     // selector used to freeze a subtree keeps freezing it.
-    if (_vm == null || identical(widget.selector, oldWidget.selector)) return;
+    if (_vm == null ||
+        (identical(widget.selector, oldWidget.selector) &&
+            identical(widget.buildWhen, oldWidget.buildWhen))) {
+      return;
+    }
     final next = widget.selector(_vm!.state);
     if (_shouldRebuild(_value, next)) _value = next;
   }

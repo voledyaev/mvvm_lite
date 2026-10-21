@@ -1,3 +1,10 @@
+## Unreleased
+
+- Fix a retained owned view model leaking when switching from `create` to
+  `.value` with that same instance and back to `create`.
+- Re-evaluate a selector's current projection when only `buildWhen` changes,
+  including when the condition is removed.
+
 ## 1.0.1
 
 No change to the API or to the `^3.8.0` SDK floor — Flutter 3.32 and newer stays

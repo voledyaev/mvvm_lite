@@ -129,9 +129,11 @@ class _ViewModelProviderState<VM extends ViewModel<Object?>>
       _created = null;
       _vm = value;
     } else if (oldWidget.create == null) {
-      // Was externally owned, now owns its own: leave the caller's view model
-      // alone and build a fresh one.
-      _vm = _created = create(context);
+      // A .value exposing our own model still carries ownership. Release that
+      // model when replaced, but leave an externally owned model alone.
+      final next = create(context);
+      if (!identical(_created, next)) _created?.dispose();
+      _vm = _created = next;
     }
   }
 

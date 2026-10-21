@@ -205,6 +205,42 @@ void main() {
       expect(find.text('value=age=30'), findsOneWidget);
     });
 
+    testWidgets('a changed buildWhen rechecks an unchanged selector', (
+      tester,
+    ) async {
+      final vm = _FormVm();
+      addTearDown(vm.dispose);
+      String selector(_FormState state) => state.name;
+      Widget build(ViewModelBuilderCondition<String>? buildWhen) =>
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: ViewModelProvider.value(
+              value: vm,
+              child: ViewModelSelector<_FormState, String>(
+                selector: selector,
+                buildWhen: buildWhen,
+                builder: (_, value, _) => Text(value),
+              ),
+            ),
+          );
+
+      await tester.pumpWidget(build((_, _) => false));
+      vm.setName('Bob');
+      await tester.pump();
+      expect(find.text('Alice'), findsOneWidget);
+
+      await tester.pumpWidget(build((_, _) => true));
+      expect(find.text('Bob'), findsOneWidget);
+
+      await tester.pumpWidget(build((_, _) => false));
+      vm.setName('Carol');
+      await tester.pump();
+      expect(find.text('Bob'), findsOneWidget);
+
+      await tester.pumpWidget(build(null));
+      expect(find.text('Carol'), findsOneWidget);
+    });
+
     testWidgets('static child is reused across rebuilds', (tester) async {
       late _FormVm vm;
       const childKey = ValueKey('static-child');

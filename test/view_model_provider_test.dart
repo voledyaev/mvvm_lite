@@ -317,6 +317,29 @@ void main() {
       expect(external.mounted, isTrue);
     });
 
+    testWidgets('retains ownership through .value of its own model', (
+      tester,
+    ) async {
+      final first = _CounterVm();
+      final second = _CounterVm();
+      await tester.pumpWidget(
+        ViewModelProvider(create: (_) => first, child: const SizedBox()),
+      );
+      await tester.pumpWidget(
+        ViewModelProvider.value(value: first, child: const SizedBox()),
+      );
+      expect(first.disposed, isFalse);
+
+      await tester.pumpWidget(
+        ViewModelProvider(create: (_) => second, child: const SizedBox()),
+      );
+      expect(first.disposed, isTrue);
+      expect(second.disposed, isFalse);
+
+      await tester.pumpWidget(const SizedBox());
+      expect(second.disposed, isTrue);
+    });
+
     testWidgets(
       'switching from .value to create leaves the caller\'s vm alone',
       (tester) async {
