@@ -1,4 +1,4 @@
-## Unreleased
+## 1.0.2
 
 - Fix a retained owned view model leaking when switching from `create` to
   `.value` with that same instance and back to `create`.

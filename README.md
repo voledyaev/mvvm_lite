@@ -6,7 +6,7 @@ A tiny, zero-dependency MVVM toolkit for Flutter: a `ViewModel` base class, a pr
 
 ```yaml
 dependencies:
-  mvvm_lite: ^1.0.0
+  mvvm_lite: ^1.0.2
 ```
 
 ## Quick start
